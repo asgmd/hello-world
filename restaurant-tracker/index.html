@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Family Eats</title>
+  <meta name="description" content="Our family's restaurant log">
+  <meta name="theme-color" content="#c2410c">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Family Eats">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar"><a href="#/places">🍽️ Family Eats</a></header>
+  <main id="view"></main>
+  <nav class="tabbar">
+    <a href="#/places" data-tab="places"><span>🏠</span>Places</a>
+    <a href="#/visits" data-tab="visits"><span>📅</span>History</a>
+    <a href="#/log" data-tab="log" class="primary"><span>＋</span>Log visit</a>
+    <a href="#/settings" data-tab="settings"><span>⚙️</span>Settings</a>
+  </nav>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

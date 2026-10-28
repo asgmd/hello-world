@@ -10,6 +10,7 @@ A small app for our family to keep track of the restaurants we go to. It runs on
 - **Photos (optional).** Add several per visit from the camera or photo library. They're shrunk to about 1600px so they don't fill up the phone.
 - **Who went.** Tap family members' names. Names you add once are remembered.
 - **Notes.** For example, what you ordered.
+- **To Try list** 🔖 — save restaurants you want to try (find nearby, search by name, or type one in), with a note on why and who suggested it. Sort by newest, A–Z, or **nearest to you right now**. Tap **✅ We went!** to log the visit — it's automatically moved off the list into your Places.
 - **Places list** with average rating, number of visits and last visit. Filter it, or sort by recent, top rated, most visited or A–Z.
 - **History**: every visit in a timeline by month, which you can filter by year or family member.
 - Edit or delete any visit, and fix a restaurant's details.

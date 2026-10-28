@@ -1,5 +1,5 @@
 // Offline support: serve the app shell from cache, refresh it in the background.
-const CACHE = 'family-eats-v1';
+const CACHE = 'family-eats-v2';
 const SHELL = ['./', 'index.html', 'styles.css', 'manifest.webmanifest', 'icon.svg', 'js/app.js', 'js/db.js', 'js/places.js', 'js/util.js'];
 
 self.addEventListener('install', (e) => {

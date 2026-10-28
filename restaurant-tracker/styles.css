@@ -142,6 +142,13 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 }
 
 .visit { margin-bottom: 8px; }
+.gap { margin: 10px 0 12px; }
+.wish { margin-bottom: 8px; }
+.wish .notes { margin-bottom: 4px; }
+.wish-actions { margin-top: 10px; flex-wrap: wrap; }
+.wish-actions .btn { padding: 8px 12px; font-size: .9rem; }
+.wish-note { margin-top: 12px; }
+.wish-note a { display: inline-block; margin-top: 4px; }
 .notes { margin: 6px 0 0; white-space: pre-wrap; }
 .place-head .links { display: flex; gap: 16px; margin: 8px 0 0; }
 .stats { display: grid; grid-template-columns: repeat(3, 1fr); text-align: center; }

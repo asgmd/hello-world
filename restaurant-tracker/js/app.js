@@ -1,7 +1,7 @@
 import * as db from './db.js';
 import * as places from './places.js';
 import {
-  todayLocal, formatDate, escapeHtml as h, uid, formatDistance, summarize,
+  todayLocal, formatDate, escapeHtml as h, uid, formatDistance, summarize, distanceMeters,
 } from './util.js';
 
 const view = document.getElementById('view');
@@ -80,7 +80,10 @@ async function shrinkImage(file, max = 1600) {
 const routes = [
   [/^#\/places$/, renderPlaces],
   [/^#\/place\/(.+)$/, (m) => renderPlace(decodeURIComponent(m[1]))],
-  [/^#\/log$/, renderPicker],
+  [/^#\/log$/, () => renderPicker('log')],
+  [/^#\/wishlist$/, renderWishlist],
+  [/^#\/wish\/add$/, () => renderPicker('wish')],
+  [/^#\/wish\/(.+)$/, (m) => renderWishForm(decodeURIComponent(m[1]))],
   [/^#\/log\/(.+)$/, (m) => renderVisitForm({ restaurantId: decodeURIComponent(m[1]) })],
   [/^#\/visit\/(.+)$/, (m) => renderVisitForm({ visitId: decodeURIComponent(m[1]) })],
   [/^#\/visits$/, renderVisits],
@@ -94,7 +97,7 @@ async function router() {
   const tab = hash.split('/')[1];
   document.querySelectorAll('.tabbar a').forEach((a) => {
     const t = a.dataset.tab;
-    a.classList.toggle('active', t === tab || (t === 'places' && tab === 'place') || (t === 'log' && tab === 'visit'));
+    a.classList.toggle('active', t === tab || (t === 'places' && tab === 'place') || (t === 'log' && tab === 'visit') || (t === 'wishlist' && tab === 'wish'));
   });
   for (const [re, fn] of routes) {
     const m = hash.match(re);
@@ -114,11 +117,13 @@ async function router() {
 const go = (hash) => { location.hash = hash; };
 const placeHash = (id) => `#/place/${encodeURIComponent(id)}`;
 const logHash = (id) => `#/log/${encodeURIComponent(id)}`;
+const wishHash = (id) => `#/wish/${encodeURIComponent(id)}`;
 
 // ---------- Places (home) ----------
 
 async function renderPlaces() {
-  const all = summarize(await db.getAll('restaurants'), await db.getAll('visits'));
+  const all = summarize(await db.getAll('restaurants'), await db.getAll('visits'))
+    .filter((p) => p.visitCount || !p.wishlist); // untried wishlist places live on the To Try tab
   if (!all.length) {
     view.innerHTML = `
       <section class="empty">
@@ -184,6 +189,9 @@ async function renderPlace(id) {
       <div><div class="num small-num">${s.lastVisit ? formatDate(s.lastVisit) : '–'}</div><div class="muted small">last visit</div></div>
     </section>
     <a class="btn primary block" href="${logHash(id)}">+ Log a visit here</a>
+    ${p.wishlist
+    ? `<section class="card wish-note"><strong>🔖 On your To Try list</strong>${p.wishNote ? `<p class="notes">${h(p.wishNote)}</p>` : ''}<a class="small" href="${wishHash(id)}">Edit</a></section>`
+    : `<a class="btn ghost block gap" href="${wishHash(id)}">🔖 Add to To Try list</a>`}
     <h3>Visits</h3>
     <ul class="list">${visits.map(visitItem).join('') || '<li class="muted pad">No visits yet.</li>'}</ul>
     <details class="card">
@@ -279,12 +287,14 @@ async function renderVisits() {
 
 // ---------- Log: choose a restaurant ----------
 
-async function renderPicker() {
+async function renderPicker(mode) {
+  const wish = mode === 'wish';
+  const nextHash = (id) => (wish ? wishHash(id) : logHash(id));
   const saved = summarize(await db.getAll('restaurants'), await db.getAll('visits'))
     .sort((a, b) => (b.lastVisit ?? '').localeCompare(a.lastVisit ?? ''));
   view.innerHTML = `
     <section class="card stack">
-      <h2>Where did you eat?</h2>
+      <h2>${wish ? 'Which restaurant do you want to try?' : 'Where did you eat?'}</h2>
       <button id="near" class="btn primary block">📍 Find restaurants near me</button>
       <form id="searchForm" class="row">
         <input id="q" type="search" class="grow" placeholder="Search by name, e.g. Joe's Pizza Boston" aria-label="Search restaurants" required>
@@ -299,7 +309,7 @@ async function renderPicker() {
       </form>
     </section>
     <div id="results"></div>
-    ${saved.length ? `
+    ${saved.length && !wish ? `
       <h3>Or pick one of your places</h3>
       <ul class="list">${saved.map((p) => `
         <li><a class="item" href="${logHash(p.id)}"><div class="grow">
@@ -325,9 +335,9 @@ async function renderPicker() {
     const btn = e.target.closest('[data-i]');
     if (!btn) return;
     const c = candidates[+btn.dataset.i];
-    if (saved.some((s) => s.id === c.id)) return go(logHash(c.id));
+    if (saved.some((s) => s.id === c.id)) return go(nextHash(c.id));
     pendingPlace = c;
-    go('#/log/new');
+    go(nextHash('new'));
   };
 
   const busy = (msg) => { results.innerHTML = `<section class="card muted"><span class="spinner"></span> ${h(msg)}</section>`; };
@@ -365,7 +375,7 @@ async function renderPicker() {
     pendingPlace = {
       id: `manual:${uid()}`, source: 'manual', name: f.get('name').trim(), cuisine: f.get('cuisine').trim(), address: f.get('address').trim(),
     };
-    go('#/log/new');
+    go(nextHash('new'));
   };
 }
 
@@ -509,8 +519,10 @@ async function renderVisitForm({ restaurantId, visitId }) {
         await db.put('restaurants', { ...place, distance: undefined, createdAt: now, updatedAt: now });
         pendingPlace = null;
       }
+      const tried = !visit && place.wishlist;
+      if (tried) await db.put('restaurants', { ...place, wishlist: false, updatedAt: now });
       await db.saveVisit(record);
-      toast(visit ? 'Visit updated' : 'Visit saved');
+      toast(tried ? 'Tried it! Removed from your To Try list' : visit ? 'Visit updated' : 'Visit saved');
       go(placeHash(place.id));
     } catch (ex) {
       err.textContent = rating ? ex.message : 'Tap the stars to give a rating (1–5).';
@@ -523,6 +535,138 @@ async function renderVisitForm({ restaurantId, visitId }) {
     await db.del('visits', visit.id);
     toast('Visit deleted');
     go(placeHash(place.id));
+  });
+}
+
+// ---------- To Try (wishlist) ----------
+
+async function renderWishlist() {
+  const list = (await db.getAll('restaurants')).filter((r) => r.wishlist);
+  if (!list.length) {
+    view.innerHTML = `
+      <section class="empty">
+        <div class="big">🔖</div>
+        <h2>Nothing to try yet</h2>
+        <p class="muted">Heard about a place? Save it here so you remember it next time you go out.</p>
+        <a class="btn primary" href="#/wish/add">+ Add a restaurant</a>
+      </section>`;
+    return;
+  }
+  view.innerHTML = `
+    <a class="btn primary block gap" href="#/wish/add">+ Add a restaurant to try</a>
+    <div class="toolbar">
+      <input id="filter" type="search" placeholder="Filter ${list.length} places…" aria-label="Filter">
+      <select id="sort" aria-label="Sort">
+        <option value="added">Newest</option>
+        <option value="near">Nearest</option>
+        <option value="name">A–Z</option>
+      </select>
+    </div>
+    <p id="sortMsg" class="muted small" hidden></p>
+    <ul class="list" id="list"></ul>`;
+  const filter = view.querySelector('#filter');
+  const sort = view.querySelector('#sort');
+  const msg = view.querySelector('#sortMsg');
+  const draw = () => {
+    const q = filter.value.trim().toLowerCase();
+    const dist = (p) => (lastPosition && p.lat != null ? distanceMeters(lastPosition.lat, lastPosition.lon, p.lat, p.lon) : null);
+    const sorters = {
+      added: (a, b) => (b.wishAddedAt ?? '').localeCompare(a.wishAddedAt ?? ''),
+      near: (a, b) => (dist(a) ?? Infinity) - (dist(b) ?? Infinity),
+      name: (a, b) => a.name.localeCompare(b.name),
+    };
+    const rows = list
+      .filter((p) => !q || `${p.name} ${p.cuisine} ${p.address} ${p.wishNote}`.toLowerCase().includes(q))
+      .sort(sorters[sort.value]);
+    view.querySelector('#list').innerHTML = rows.map((p) => `
+      <li class="card wish">
+        <div class="row between">
+          <a class="title" href="${placeHash(p.id)}">${h(p.name)}</a>
+          ${dist(p) != null ? `<span class="muted small">${formatDistance(dist(p))}</span>` : ''}
+        </div>
+        <div class="muted small">${meta(p)}</div>
+        ${p.wishNote ? `<p class="notes">${h(p.wishNote)}</p>` : ''}
+        <div class="muted small">${p.wishBy ? `Suggested by ${h(p.wishBy)} · ` : ''}added ${p.wishAddedAt ? formatDate(p.wishAddedAt.slice(0, 10)) : ''}</div>
+        <div class="row wish-actions">
+          <a class="btn primary" href="${logHash(p.id)}">✅ We went!</a>
+          ${p.lat != null ? `<a class="btn" href="https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lon}" target="_blank" rel="noopener">Map</a>` : ''}
+          <a class="btn" href="${wishHash(p.id)}">Edit</a>
+        </div>
+      </li>`).join('') || '<li class="muted pad">No matches.</li>';
+  };
+  filter.oninput = draw;
+  sort.onchange = async () => {
+    msg.hidden = true;
+    if (sort.value === 'near' && !lastPosition) {
+      msg.textContent = 'Finding your location…';
+      msg.hidden = false;
+      try {
+        lastPosition = await places.getPosition();
+        msg.hidden = true;
+      } catch (e) {
+        msg.textContent = e.message;
+      }
+    }
+    draw();
+  };
+  draw();
+}
+
+async function renderWishForm(restaurantId) {
+  const place = restaurantId === 'new' ? pendingPlace : await db.get('restaurants', restaurantId);
+  if (!place) return go('#/wish/add');
+  const settings = await db.getSettings();
+  const people = [...new Set([...settings.family, ...(place.wishBy ? [place.wishBy] : [])])];
+  let by = place.wishBy ?? '';
+  view.innerHTML = `
+    ${placeHeader(place)}
+    <form id="wishForm" class="card stack">
+      <label>Why do you want to go?
+        <textarea name="note" rows="3" placeholder="e.g. Aunt Kim says the dumplings are amazing">${h(place.wishlist ? place.wishNote : '')}</textarea>
+      </label>
+      ${people.length ? `<div>
+        <div class="label">Suggested by</div>
+        <div class="chips" id="chips"></div>
+      </div>` : ''}
+      <button class="btn primary block">${place.wishlist ? 'Save' : '🔖 Add to To Try list'}</button>
+      ${place.wishlist ? '<button type="button" id="unwish" class="btn danger block">Remove from To Try list</button>' : ''}
+    </form>`;
+  const chips = view.querySelector('#chips');
+  const drawChips = () => {
+    chips.innerHTML = people.map((n) => `<button type="button" class="chip ${by === n ? 'on' : ''}" data-n="${h(n)}">${h(n)}</button>`).join('');
+  };
+  if (chips) {
+    chips.onclick = (e) => {
+      const c = e.target.closest('[data-n]');
+      if (c) { by = by === c.dataset.n ? '' : c.dataset.n; drawChips(); }
+    };
+    drawChips();
+  }
+  const now = () => new Date().toISOString();
+  view.querySelector('#wishForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const t = now();
+    await db.put('restaurants', {
+      ...place,
+      distance: undefined,
+      wishlist: true,
+      wishNote: new FormData(e.target).get('note').trim(),
+      wishBy: by,
+      wishAddedAt: place.wishlist ? place.wishAddedAt : t,
+      createdAt: place.createdAt ?? t,
+      updatedAt: t,
+    });
+    if (restaurantId === 'new') pendingPlace = null;
+    toast(place.wishlist ? 'Saved' : 'Added to your To Try list');
+    go('#/wishlist');
+  };
+  view.querySelector('#unwish')?.addEventListener('click', async () => {
+    const visits = await db.visitsFor(place.id);
+    // A place that was never visited only existed for the wishlist, so remove it entirely.
+    if (visits.length) await db.put('restaurants', { ...place, wishlist: false, updatedAt: now() });
+    else await db.deleteRestaurant(place.id);
+    toast('Removed from To Try list');
+    go('#/wishlist');
   });
 }
 
